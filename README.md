@@ -1,129 +1,69 @@
 # ChappieAutoAPI
 
-A dependency-free Node.js HTTP API runtime where API-specific declarations live in route files and request/response schemas are discovered dynamically from an OpenAPI document.
+Dependency-free Node.js API runtime for testing communication between APIs.
 
-The core rule is: define the route, do not duplicate the schema.
+Route files describe behavior. Swagger/OpenAPI is the external contract source.
 
-## Route files
+## Swagger 2.0
 
-A route file may define:
+The runtime accepts a local Swagger/OpenAPI JSON document through SWAGGER_JSON.
 
-- method: HTTP method.
-- route: generated HTTP route.
-- responseRoute: optional response/callback route.
-- outputSchema: optional explicit output schema name and file path.
-- handler: optional runtime implementation.
+Swagger 2.0 is supported, including:
 
-Example:
+- paths/{route}/{method}/parameters[].schema for request bodies;
+- responses/{status}.schema for response objects;
+- local #/definitions/... references;
+- OpenAPI 3 requestBody.content and responses.content when present.
 
-    export default {
-      method: "POST",
-      route: "/orders",
+At startup, only the document's paths property is persisted to configs/output.routes.json.
 
-      handler: async ({ request, schema }) => ({
-        received: request.body,
-        inputSchema: schema.input,
-        outputSchema: schema.output
-      })
-    };
+No generated schema module/file is created.
 
-No input or output schema is declared in the route.
+## Lazy request schemas
 
-## Synchronous and asynchronous routes
+Every receiving route starts with an empty learned schema.
 
-If responseRoute is omitted, ChappieAutoAPI treats it as the same route and marks the operation as synchronous.
+The first request is the learning request. ChappieAutoAPI infers the request shape from the real payload and stores it in configs/output.routes.json.
 
-    {
-      method: "POST",
-      route: "/orders"
-    }
+Validation starts only with the second request.
 
-If responseRoute is explicitly defined, the operation is marked asynchronous.
-
-    {
-      method: "POST",
-      route: "/orders",
-      responseRoute: "/orders/{id}"
-    }
-
-The response route becomes the OpenAPI lookup route for the generated output schema.
-
-## Dynamic input schemas
-
-For each request, ChappieAutoAPI locates the OpenAPI operation matching the route method and path.
-
-The generated input schema is assembled from:
-
-- path parameters;
-- query parameters;
-- header parameters;
-- request body content.
-
-OpenAPI local $ref references are resolved against the loaded document. Therefore route files do not need to copy schemas from components.schemas.
-
-## Dynamic output schemas
-
-When outputSchema.path is not defined, the runtime derives the output schema from the OpenAPI response of responseRoute.
-
-For example:
-
-    GET /orders/{id}
-      -> responses
-      -> 200
-      -> application/json
-      -> schema
-
-If the route has no responseRoute, its own route is used.
-
-## Explicit output schemas
-
-An explicit output schema is supported for endpoints that intentionally have a local response contract:
-
-    export default {
-      method: "GET",
-      route: "/orders/{id}",
-      outputSchema: {
-        name: "OrderView",
-        path: "../schemas/order-view.js"
-      }
-    };
-
-The schema path is resolved relative to the route file.
+The expected response schema is resolved dynamically from Swagger/OpenAPI when the route is actually used.
 
 ## Configuration
 
     PORT=3000
     ROUTES_DIR=./routes
+    SWAGGER_JSON=./swagger.json
+    OUTPUT_ROUTES_CONFIG=./configs/output.routes.json
     OPENAPI_URL=http://localhost:4000/openapi.json
     OPENAPI_CACHE_TTL_MS=60000
 
-Node.js 20+ is required. The runtime uses Node's native HTTP server and fetch API; there is no Express, Fastify, Ajv, Zod or other runtime dependency.
+## Route file
+
+    export default {
+      method: "POST",
+      route: "/chat/archive",
+      handler: async ({ request, schema }) => ({
+        received: request.body,
+        responseSchema: schema.output
+      })
+    };
+
+No request or response schema needs to be duplicated in the route file.
+
+## Generated config
+
+The paths section is copied directly from Swagger.
+
+The schemas section is populated lazily:
+
+    {
+      "paths": { "...": "Swagger paths" },
+      "schemas": {
+        "POST /chat/archive": { "...": "inferred from first request" }
+      }
+    }
 
 ## Introspection
 
-The generated route contract is exposed through:
-
     GET /__chappie/routes
-
-It returns the loaded route definitions plus their resolved input and output schemas.
-
-## Architecture
-
-    route file
-        |
-        +--> HTTP method + route
-        |
-        +--> optional response route
-        |
-        +--> optional explicit output schema
-        |
-        v
-    ChappieAutoAPI
-        |
-        v
-    OpenAPI.json
-        |
-        +--> input schema
-        +--> output schema
-
-OpenAPI is the schema authority. Route files describe routing and behavior instead of maintaining duplicated request and response models.
