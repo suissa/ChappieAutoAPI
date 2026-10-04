@@ -23,9 +23,9 @@ No generated schema module/file is created.
 
 Every receiving route starts with an empty learned schema.
 
-The first request is the learning request. ChappieAutoAPI infers the request shape from the real payload and stores it in configs/output.routes.json.
+The first request is the learning request. ChappieAutoAPI infers the request shape from the real payload and keeps that schema in memory for the running test process.
 
-Validation starts only with the second request.
+Validation starts only with the second request. The learned schema is intentionally not written to disk.
 
 The expected response schema is resolved dynamically from Swagger/OpenAPI when the route is actually used.
 
@@ -55,14 +55,7 @@ No request or response schema needs to be duplicated in the route file.
 
 The paths section is copied directly from Swagger.
 
-The schemas section is populated lazily:
-
-    {
-      "paths": { "...": "Swagger paths" },
-      "schemas": {
-        "POST /chat/archive": { "...": "inferred from first request" }
-      }
-    }
+The generated file contains only the Swagger paths. Learned request schemas remain runtime-only.
 
 ## Introspection
 
