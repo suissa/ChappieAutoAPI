@@ -1,7 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { loadRoutes } from "./routes.js";
 import { OpenAPIResolver, inferSchema } from "./openapi.js";
 import { Router, extractParams } from "./router.js";
@@ -9,17 +9,18 @@ import { Router, extractParams } from "./router.js";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const routesDirectory = path.resolve(process.env.ROUTES_DIR || path.join(root, "../routes"));
 const port = Number(process.env.PORT || 3000);
-const swaggerFile = path.resolve(process.env.SWAGGER_JSON || path.join(root, "../swagger.json"));
-const outputRoutesFile = path.resolve(process.env.OUTPUT_ROUTES_CONFIG || path.join(root, "../configs/output.routes.json"));
+const swaggerFile = process.env.SWAGGER_JSON
+  ? path.resolve(process.env.SWAGGER_JSON)
+  : path.join(root, "../swagger.json");
+const swaggerUrl = process.env.OPENAPI_URL;
+const ttlMs = Number(process.env.OPENAPI_CACHE_TTL_MS || 60_000);
 
+const openapiSource = await prepareOpenAPISource({ file: swaggerUrl ? null : swaggerFile, url: swaggerUrl });
 const openapi = new OpenAPIResolver({
-  file: swaggerFile,
-  url: process.env.OPENAPI_URL,
-  ttlMs: Number(process.env.OPENAPI_CACHE_TTL_MS || 60_000)
+  file: openapiSource.file,
+  url: openapiSource.url,
+  ttlMs
 });
-
-await mkdir(path.dirname(outputRoutesFile), { recursive: true });
-await exportPathsConfig();
 
 const routes = await loadRoutes(routesDirectory);
 const learnedSchemas = new Map();
@@ -103,10 +104,27 @@ server.listen(port, () => {
   console.log(`Loaded ${routes.length} route(s)`);
 });
 
-async function exportPathsConfig() {
-  const document = await openapi.getDocument();
-  await writeFile(outputRoutesFile, JSON.stringify({ paths: document.paths }, null, 2) + "\n", "utf8");
+async function prepareOpenAPISource({ file, url }) {
+  if (url) return { url, file: null };
+
+  const sourceDocument = JSON.parse(await readFile(file, "utf8"));
+  if (!sourceDocument || typeof sourceDocument !== "object" || !sourceDocument.paths) {
+    throw new Error("Invalid Swagger/OpenAPI JSON: paths is required");
+  }
+
+  const parsed = path.parse(file);
+  const fullFile = path.join(parsed.dir, `${parsed.name}.full${parsed.ext || ".json"}`);
+  const keys = Object.keys(sourceDocument);
+  const hasMoreThanPaths = keys.some((key) => key !== "paths");
+
+  if (hasMoreThanPaths) {
+    await copyFile(file, fullFile);
+    await writeFile(file, JSON.stringify({ paths: sourceDocument.paths }, null, 2) + "\n", "utf8");
+  }
+
+  return { file: hasMoreThanPaths ? fullFile : file, url: null };
 }
+
 
 async function readBody(req) {
   if (req.method === "GET" || req.method === "HEAD") return undefined;
