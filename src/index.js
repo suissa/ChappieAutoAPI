@@ -24,14 +24,15 @@ const router = new Router({ routes, openapi });
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    if (url.pathname === "/__chappie/routes" && req.method === "GET") {
+      return sendJson(res, 200, await Promise.all(routes.map((item) => router.describe(item))));
+    }
+
     const route = router.match(req.method || "GET", url.pathname);
 
     if (!route) {
       return sendJson(res, 404, { error: "Route not found" });
-    }
-
-    if (url.pathname === "/__chappie/routes") {
-      return sendJson(res, 200, await Promise.all(routes.map((item) => router.describe(item))));
     }
 
     const body = await readBody(req);
