@@ -1,7 +1,7 @@
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { loadRoutes } from "./routes.js";
 import { OpenAPIResolver, inferSchema } from "./openapi.js";
 import { Router, extractParams } from "./router.js";
@@ -52,7 +52,6 @@ const server = http.createServer(async (req, res) => {
     if (!learned) {
       const schema = inferSchema(requestValue);
       learnedSchemas.set(key, schema);
-      await persistLearnedSchema(key, schema);
       return sendJson(res, 202, { status: "schema_initialized", route: route.route, schema });
     }
 
@@ -107,14 +106,6 @@ server.listen(port, () => {
 async function exportPathsConfig() {
   const document = await openapi.getDocument();
   await writeFile(outputRoutesFile, JSON.stringify({ paths: document.paths }, null, 2) + "\n", "utf8");
-}
-
-async function persistLearnedSchema(key, schema) {
-  const current = await readFile(outputRoutesFile, "utf8").catch(() => JSON.stringify({ paths: {} }));
-  const config = JSON.parse(current);
-  config.schemas ||= {};
-  config.schemas[key] = schema;
-  await writeFile(outputRoutesFile, JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 
 async function readBody(req) {
