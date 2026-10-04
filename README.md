@@ -6,7 +6,7 @@ Route files describe behavior. Swagger/OpenAPI is the external contract source.
 
 ## Swagger 2.0
 
-The runtime accepts a local Swagger/OpenAPI JSON document through SWAGGER_JSON.
+The runtime accepts a local Swagger/OpenAPI JSON document through SWAGGER_JSON, or a remote document through OPENAPI_URL. These are alternative sources.
 
 Swagger 2.0 is supported, including:
 
@@ -15,7 +15,9 @@ Swagger 2.0 is supported, including:
 - local #/definitions/... references;
 - OpenAPI 3 requestBody.content and responses.content when present.
 
-At startup, only the document's paths property is persisted to configs/output.routes.json.
+For a remote URL, the document is read and only its `paths` data is used by the runtime. No remote document is written locally.
+
+For a local JSON file such as `swagger.json`, if it contains keys besides `paths`, the original file is first copied to `swagger.full.json` and then the original `swagger.json` is overwritten with only `{ "paths": ... }`. The runtime continues resolving schemas from the `.full.json` copy, so definitions and `$ref`s are preserved.
 
 No generated schema module/file is created.
 
@@ -50,12 +52,6 @@ The expected response schema is resolved dynamically from Swagger/OpenAPI when t
     };
 
 No request or response schema needs to be duplicated in the route file.
-
-## Generated config
-
-The paths section is copied directly from Swagger.
-
-The generated file contains only the Swagger paths. Learned request schemas remain runtime-only.
 
 ## Introspection
 
